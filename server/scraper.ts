@@ -53,16 +53,60 @@ interface PageModel {
  * DataTables consumes client-side (no <tbody> rows in the HTML).
  */
 function extractModel(html: string): PageModel | null {
-  // Match "var model =" followed by a JSON object
-  const match = html.match(/var\s+model\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/);
-  if (!match) return null;
-
-  try {
-    return JSON.parse(match[1]);
-  } catch (e) {
-    console.error('Failed to parse model JSON:', e);
+  // Find the start of the model JSON object
+  const marker = 'var model =';
+  const markerIndex = html.indexOf(marker);
+  if (markerIndex === -1) {
+    console.error('Could not find "var model =" in HTML');
     return null;
   }
+
+  // Find the opening brace
+  const jsonStart = html.indexOf('{', markerIndex + marker.length);
+  if (jsonStart === -1) return null;
+
+  // Count braces to find the matching closing brace
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  for (let i = jsonStart; i < html.length; i++) {
+    const ch = html[i];
+
+    if (escape) {
+      escape = false;
+      continue;
+    }
+
+    if (ch === '\\' && inString) {
+      escape = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        const jsonStr = html.substring(jsonStart, i + 1);
+        try {
+          return JSON.parse(jsonStr);
+        } catch (e) {
+          console.error('Failed to parse model JSON:', e);
+          return null;
+        }
+      }
+    }
+  }
+
+  console.error('Could not find matching closing brace for model JSON');
+  return null;
 }
 
 /**
